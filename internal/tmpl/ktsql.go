@@ -160,6 +160,50 @@ func ktSQLTmpl(w io.Writer, dot core.KtTmplCtx) error {
 				_, _ = io.WriteString(w, "\n    }")
 				_, _ = io.WriteString(w, "\n  }")
 			}
+			if dot.Cmd == ":iter" {
+				if eval := dot.Comments; len(eval) != 0 {
+					_, _ = io.WriteString(w, "\n")
+					for _, dot := range eval {
+						_ = dot
+						_, _ = io.WriteString(w, "\n//")
+						_, _ = io.WriteString(w, dot)
+					}
+				}
+				_, _ = io.WriteString(w, "\n\n  @Throws(SQLException::class)")
+				_, _ = io.WriteString(w, "\n  override fun ")
+				_, _ = io.WriteString(w, dot.MethodName)
+				_, _ = io.WriteString(w, "(iter: (")
+				_, _ = io.WriteString(w, dot.Ret.Name)
+				_, _ = io.WriteString(w, ": ")
+				_, _ = io.WriteString(w, dot.Ret.Type())
+				_, _ = io.WriteString(w, ") -> Unit")
+				if dot.Arg.Args() != "" {
+					_, _ = io.WriteString(w, dot.Arg.Args())
+				}
+				_, _ = io.WriteString(w, ") {")
+
+				_, _ = io.WriteString(w, "\n    return conn.prepareStatement(")
+				_, _ = io.WriteString(w, dot.ConstantName)
+				_, _ = io.WriteString(w, ").use { stmt ->")
+
+				_, _ = io.WriteString(w, "\n      ")
+				_, _ = io.WriteString(w, dot.Arg.Bindings())
+
+				_, _ = io.WriteString(w, "\n\n      val results = stmt.executeQuery()")
+
+				_, _ = io.WriteString(w, "\n      while (results.next()) {")
+				_, _ = io.WriteString(w, "\n        val ret = ")
+				_, _ = io.WriteString(w, dot.Ret.ResultSet())
+				_, _ = io.WriteString(w, "\n        try {")
+				_, _ = io.WriteString(w, "\n          iter(ret)")
+				_, _ = io.WriteString(w, "\n        } catch (e: Exception) {")
+				_, _ = io.WriteString(w, "\n          throw SQLException(\"error calling iter function at row %d\".format(results.row), e)")
+				_, _ = io.WriteString(w, "\n        }")
+				_, _ = io.WriteString(w, "\n      }")
+
+				_, _ = io.WriteString(w, "\n    }")
+				_, _ = io.WriteString(w, "\n  }")
+			}
 			if dot.Cmd == ":exec" {
 				if eval := dot.Comments; len(eval) != 0 {
 					_, _ = io.WriteString(w, "\n")

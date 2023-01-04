@@ -18,6 +18,9 @@ interface Queries {
   {{- if eq .Cmd ":many"}}
   fun {{.MethodName}}({{.Arg.Args}}): List<{{.Ret.Type}}>
   {{- end}}
+  {{- if eq .Cmd ":iter"}}
+  fun {{.MethodName}}(iter: ({{.Ret.Name}}: {{.Ret.Type}}) -> Unit{{ if .Arg.Args }}, {{ .Arg.Args}}{{end}})
+  {{- end}}
   {{- if eq .Cmd ":exec"}}
   fun {{.MethodName}}({{.Arg.Args}})
   {{- end}}

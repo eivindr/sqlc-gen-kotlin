@@ -62,6 +62,20 @@ func ktIfaceTmpl(w io.Writer, dot core.KtTmplCtx) error {
 				_, _ = io.WriteString(w, dot.Ret.Type())
 				_, _ = io.WriteString(w, ">")
 			}
+			if dot.Cmd == ":iter" {
+				_, _ = io.WriteString(w, "\n  fun ")
+				_, _ = io.WriteString(w, dot.MethodName)
+				_, _ = io.WriteString(w, "(iter: (")
+				_, _ = io.WriteString(w, dot.Ret.Name)
+				_, _ = io.WriteString(w, ": ")
+				_, _ = io.WriteString(w, dot.Ret.Type())
+				_, _ = io.WriteString(w, ") -> Unit")
+				if dot.Arg.Args() != "" {
+					_, _ = io.WriteString(w, ", ")
+					_, _ = io.WriteString(w, dot.Arg.Args())
+				}
+				_, _ = io.WriteString(w, ")")
+			}
 			if dot.Cmd == ":exec" {
 				_, _ = io.WriteString(w, "\n  fun ")
 				_, _ = io.WriteString(w, dot.MethodName)
