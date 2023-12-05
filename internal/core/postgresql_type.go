@@ -3,11 +3,11 @@ package core
 import (
 	"log"
 
-	plugin "github.com/tabbed/sqlc-go/codegen"
-	"github.com/tabbed/sqlc-go/sdk"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
+	"github.com/sqlc-dev/plugin-sdk-go/sdk"
 )
 
-func postgresType(req *plugin.CodeGenRequest, col *plugin.Column) (string, bool) {
+func postgresType(req *plugin.GenerateRequest, col *plugin.Column) (string, bool) {
 	columnType := sdk.DataType(col.Type)
 
 	switch columnType {

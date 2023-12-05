@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	plugin "github.com/tabbed/sqlc-go/codegen"
+	"github.com/sqlc-dev/plugin-sdk-go/plugin"
 )
 
 type Importer struct {
