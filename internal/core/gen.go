@@ -35,6 +35,8 @@ type Field struct {
 	Name    string
 	Type    ktType
 	Comment string
+	// EmbedFields contains the embedded fields that require scanning.
+	EmbedFields []Field
 }
 
 type Struct struct {
@@ -184,8 +186,22 @@ func (v QueryValue) ResultSet() string {
 	if v.Struct == nil {
 		return jdbcGet(v.Typ, 1)
 	}
-	for i, f := range v.Struct.Fields {
-		out = append(out, jdbcGet(f.Type, i+1))
+
+	idx := 0
+	for _, f := range v.Struct.Fields {
+		if len(f.EmbedFields) > 0 {
+			var classConstr strings.Builder
+			classConstr.WriteString(fmt.Sprintf("%s(\n", f.Type.DataType))
+			for _, ef := range f.EmbedFields {
+				classConstr.WriteString(indent(fmt.Sprintf("%s,\n", jdbcGet(ef.Type, idx+1)), 0, 4))
+				idx++
+			}
+			classConstr.WriteString(")")
+			out = append(out, classConstr.String())
+		} else {
+			out = append(out, jdbcGet(f.Type, idx+1))
+			idx++
+		}
 	}
 	ret := indent(strings.Join(out, ",\n"), 4, -1)
 	ret = indent(v.Struct.Name+"(\n"+ret+"\n)", 12, 0)
@@ -305,9 +321,10 @@ func BuildDataClasses(conf Config, req *plugin.GenerateRequest) []Struct {
 			}
 			for _, column := range table.Columns {
 				s.Fields = append(s.Fields, Field{
-					Name:    memberName(column.Name, req.Settings),
-					Type:    makeType(req, column),
-					Comment: column.Comment,
+					Name:        memberName(column.Name, req.Settings),
+					Type:        makeType(req, column),
+					Comment:     column.Comment,
+					EmbedFields: nil,
 				})
 			}
 			structs = append(structs, s)
@@ -398,6 +415,46 @@ func ktInnerType(req *plugin.GenerateRequest, col *plugin.Column) (string, bool)
 type goColumn struct {
 	id int
 	*plugin.Column
+	embed *goEmbed
+}
+
+type goEmbed struct {
+	modelType string
+	modelName string
+	fields    []Field
+}
+
+// look through all the structs and attempt to find a matching one to embed
+// We need the name of the struct and its field names.
+func newGoEmbed(embed *plugin.Identifier, structs []Struct, defaultSchema string) *goEmbed {
+	if embed == nil {
+		return nil
+	}
+
+	for _, s := range structs {
+		embedSchema := defaultSchema
+		if embed.Schema != "" {
+			embedSchema = embed.Schema
+		}
+
+		// compare the other attributes
+		if embed.Catalog != s.Table.Catalog || embed.Name != s.Table.Name || embedSchema != s.Table.Schema {
+			continue
+		}
+
+		fields := make([]Field, len(s.Fields))
+		for i, f := range s.Fields {
+			fields[i] = f
+		}
+
+		return &goEmbed{
+			modelType: s.Name,
+			modelName: strings.ToLower(string(s.Name[0])) + s.Name[1:],
+			fields:    fields,
+		}
+	}
+
+	return nil
 }
 
 func ktColumnsToStruct(req *plugin.GenerateRequest, name string, columns []goColumn, namer func(*plugin.Column, int) string) *Struct {
@@ -415,9 +472,22 @@ func ktColumnsToStruct(req *plugin.GenerateRequest, name string, columns []goCol
 			fieldName = fmt.Sprintf("%s_%d", fieldName, v+1)
 		}
 		field := Field{
-			ID:   c.id,
-			Name: fieldName,
-			Type: makeType(req, c.Column),
+			ID: c.id,
+		}
+		if c.embed == nil {
+			field.Name = fieldName
+			field.Type = makeType(req, c.Column)
+		} else {
+			field.Name = c.embed.modelName
+			field.Type = ktType{
+				Name:     c.embed.modelType,
+				IsEnum:   false,
+				IsArray:  false,
+				IsNull:   false,
+				DataType: c.embed.modelType,
+				Engine:   req.Settings.Engine,
+			}
+			field.EmbedFields = c.embed.fields
 		}
 		gs.Fields = append(gs.Fields, field)
 		nameSeen[c.Name]++
@@ -526,13 +596,14 @@ func BuildQueries(req *plugin.GenerateRequest, structs []Struct) ([]Query, error
 			binding: refs,
 		}
 
-		if len(query.Columns) == 1 {
+		forceStruct := len(query.Columns) == 1 && query.Columns[0].EmbedTable != nil
+		if len(query.Columns) == 1 && !forceStruct {
 			c := query.Columns[0]
 			gq.Ret = QueryValue{
 				Name: "results",
 				Typ:  makeType(req, c),
 			}
-		} else if len(query.Columns) > 1 {
+		} else if len(query.Columns) > 1 || forceStruct {
 			var gs *Struct
 			var emit bool
 
@@ -560,9 +631,11 @@ func BuildQueries(req *plugin.GenerateRequest, structs []Struct) ([]Query, error
 			if gs == nil {
 				var columns []goColumn
 				for i, c := range query.Columns {
+					embed := newGoEmbed(c.EmbedTable, structs, req.Catalog.DefaultSchema)
 					columns = append(columns, goColumn{
 						id:     i,
 						Column: c,
+						embed:  embed,
 					})
 				}
 				gs = ktColumnsToStruct(req, gq.ClassName+"Row", columns, ktColumnName)
